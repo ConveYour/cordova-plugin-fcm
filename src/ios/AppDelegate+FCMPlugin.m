@@ -7,7 +7,6 @@
 //
 #import "AppDelegate+FCMPlugin.h"
 #import "FCMPlugin.h"
-#import "FCMQueue.h"
 #import <objc/runtime.h>
 #import <Foundation/Foundation.h>
 
@@ -15,6 +14,7 @@
 // running iOS 10 and above. Implement FIRMessagingDelegate to receive data message via FCM for
 // devices running iOS 10 and above.
 
+static NSData* lastNotification;
 
 @implementation AppDelegate (FCMPlugin)
 
@@ -32,37 +32,19 @@
 
 - (BOOL)application:(UIApplication *)application customDidFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
     [self application:application customDidFinishLaunchingWithOptions:launchOptions];
-    
     NSLog(@"DidFinishLaunchingWithOptions");
     
     [FIRApp configure];
-    
-    if (floor(NSFoundationVersionNumber) <= NSFoundationVersionNumber_iOS_9_x_Max) {
-        UIUserNotificationType allNotificationTypes =
-        (UIUserNotificationTypeSound | UIUserNotificationTypeAlert | UIUserNotificationTypeBadge);
-        UIUserNotificationSettings *settings =
-        [UIUserNotificationSettings settingsForTypes:allNotificationTypes categories:nil];
-        [[UIApplication sharedApplication] registerUserNotificationSettings:settings];
-    } else {
-        // iOS 10 or later
-#if defined(__IPHONE_10_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_10_0
-        UNAuthorizationOptions authOptions =
-        UNAuthorizationOptionAlert
-        | UNAuthorizationOptionSound
-        | UNAuthorizationOptionBadge;
-        [[UNUserNotificationCenter currentNotificationCenter] requestAuthorizationWithOptions:authOptions completionHandler:^(BOOL granted, NSError * _Nullable error) {
-        }];
-        
-        // For iOS 10 display notification (sent via APNS)
-        [UNUserNotificationCenter currentNotificationCenter].delegate = self;
-#endif
-    }
-    
+    NSLog(@"Configured Firebase");
+
     [FIRMessaging messaging].delegate = self;
     [[UIApplication sharedApplication] registerForRemoteNotifications];
     [FIRMessaging messaging].shouldEstablishDirectChannel = YES;
-    
 
+    #if defined(__IPHONE_10_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_10_0
+        // For iOS 10 display notification (sent via APNS)
+        [UNUserNotificationCenter currentNotificationCenter].delegate = self;
+    #endif
     
     return YES;
 }
@@ -139,13 +121,15 @@
 
 - (void)applicationDidBecomeActive:(UIApplication *)application
 {
-    [[FCMQueue sharedFCMQueue] setIsInForground:YES];
     NSLog(@"applicationDidBecomeActive:");
+    if(lastNotification) {
+        [FCMPlugin.fcmPlugin notifyOfMessage:lastNotification];
+        lastNotification = NULL;
+    }
 }
 
 - (void)applicationDidEnterBackground:(UIApplication *)application
 {
-    [[FCMQueue sharedFCMQueue] setIsInForground:NO];
     NSLog(@"applicationDidEnterBackground:");
 }
 
@@ -156,9 +140,13 @@
 -(void) notifyOfMessage: (NSDictionary*) notification withTapInfo:(BOOL)wasTapped {
     NSData *jsonData = [self packageMessage:notification withTapInfo:wasTapped];
     [self logMessage:jsonData];
-
-    //Push notification onto a queue...
-    [[FCMQueue sharedFCMQueue] pushNotificationToQueue:jsonData];
+    
+    if(wasTapped) {
+        NSLog(@"notifyOfMessage:withTapInfo: => wasTapped = true... therefore going to store the data and send when app returns to the foreground");
+        lastNotification = jsonData;
+        return;
+    }
+    [FCMPlugin.fcmPlugin notifyOfMessage:jsonData];
 }
 
 -(void) logMessage: (NSData*) messageData {
@@ -175,5 +163,6 @@
                                                          error:&error];
     return jsonData;
 }
+
 
 @end
