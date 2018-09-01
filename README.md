@@ -1,3 +1,5 @@
+## This fork has merged ostownsville's dev-permission branch into master. 
+
 # Google Firebase Cloud Messaging Cordova Push Plugin
 > Extremely easy plug&play push notification plugin for Cordova applications with Google Firebase FCM.
 
